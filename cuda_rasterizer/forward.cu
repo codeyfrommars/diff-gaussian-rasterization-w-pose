@@ -190,7 +190,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Perform near culling, quit if outside.
 	float3 p_view;
-	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
+	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view)) // We actually don't use projmatrix here
 		return;
 
 	// Transform point by projecting
@@ -425,7 +425,7 @@ void FORWARD::preprocess(int P, int D, int M,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
+	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > ( // P is # of gaussians. We have a thread for each Gaussian
 		P, D, M,
 		means3D,
 		scales,
