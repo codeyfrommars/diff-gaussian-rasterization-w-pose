@@ -59,7 +59,10 @@ namespace BACKWARD
 		float* dL_dcov3D,
 		float* dL_dsh,
 		glm::vec3* dL_dscale,
-		glm::vec4* dL_drot);
+		glm::vec4* dL_drot,
+    float* dL_dviewmat,
+    float* dL_dprojmat,
+    float3* dL_dcampos);
 }
 
 #endif

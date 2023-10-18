@@ -29,6 +29,7 @@ def rasterize_gaussians(
     cov3Ds_precomp,
     viewmatrix,
     projmatrix,
+    campos,
     raster_settings,
 ):
     return _RasterizeGaussians.apply(
@@ -42,6 +43,7 @@ def rasterize_gaussians(
         cov3Ds_precomp,
         viewmatrix,
         projmatrix,
+        campos,
         raster_settings,
     )
 
@@ -59,9 +61,9 @@ class _RasterizeGaussians(torch.autograd.Function):
         cov3Ds_precomp,
         viewmatrix,
         projmatrix,
+        campos,
         raster_settings,
     ):
-
         # Restructure arguments the way that the C++ lib expects them
         args = (
             raster_settings.bg, 
@@ -82,7 +84,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.image_width,
             sh,
             raster_settings.sh_degree,
-            raster_settings.campos,
+            # raster_settings.campos,
+            campos,
             raster_settings.prefiltered,
             raster_settings.debug
         )
@@ -105,7 +108,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         # ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
         # Adding camera tensors
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer,
-                              viewmatrix, projmatrix)
+                              viewmatrix, projmatrix, campos)
         return color, radii
 
     @staticmethod
@@ -116,7 +119,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings = ctx.raster_settings
         # colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
         # Adding camera tensors
-        colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer, viewmatrix, projmatrix = ctx.saved_tensors
+        colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer, viewmatrix, projmatrix, campos = ctx.saved_tensors
 
         # Restructure args as C++ method expects them
         args = (raster_settings.bg,
@@ -136,7 +139,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                 grad_out_color, 
                 sh, 
                 raster_settings.sh_degree, 
-                raster_settings.campos,
+                # raster_settings.campos,
+                campos,
                 geomBuffer,
                 num_rendered,
                 binningBuffer,
@@ -149,7 +153,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             try:
                 # grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
                 # Adding camera tensors
-                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix = _C.rasterize_gaussians_backward(*args)
+                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix, grad_campos = _C.rasterize_gaussians_backward(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_bw.dump")
                 print("\nAn error occured in backward. Writing snapshot_bw.dump for debugging.\n")
@@ -157,8 +161,17 @@ class _RasterizeGaussians(torch.autograd.Function):
         else:
              # grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
             # Adding camera tensors
-            grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix = _C.rasterize_gaussians_backward(*args)
+            grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix, grad_campos = _C.rasterize_gaussians_backward(*args)
 
+        torch.set_printoptions(precision=10)
+        print("view")
+        print(grad_viewmatrix)
+        print("proj")
+        print(grad_projmatrix)
+        print("campos")
+        print(grad_campos)
+        print("campos")
+        print(grad_campos)
         grads = (
             grad_means3D,
             grad_means2D,
@@ -171,6 +184,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             # Add camera pose to grads
             grad_viewmatrix,
             grad_projmatrix,
+            grad_campos,
             None,
         )
 
@@ -207,7 +221,7 @@ class GaussianRasterizer(nn.Module):
         return visible
 
     def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None,
-                viewmatrix = None, projmatrix = None):
+                viewmatrix = None, projmatrix = None, campos = None):
         
         raster_settings = self.raster_settings
 
@@ -237,11 +251,12 @@ class GaussianRasterizer(nn.Module):
             shs,
             colors_precomp,
             opacities,
-            scales, 
+            scales,
             rotations,
             cov3D_precomp,
             viewmatrix,
             projmatrix,
-            raster_settings, 
+            campos,
+            raster_settings,
         )
 

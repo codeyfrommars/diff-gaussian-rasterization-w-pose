@@ -366,6 +366,10 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_dsh,
 	float* dL_dscale,
 	float* dL_drot,
+  // Add camera gradients
+	float* dL_dviewmat,
+	float* dL_dprojmat,
+	float* dL_dcampos,
 	bool debug)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
@@ -430,5 +434,9 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dcov3D,
 		dL_dsh,
 		(glm::vec3*)dL_dscale,
-		(glm::vec4*)dL_drot), debug)
+		(glm::vec4*)dL_drot,
+    // TODO: check if I need to cast these
+    dL_dviewmat,
+    dL_dprojmat,
+    (float3*)dL_dcampos), debug)
 }
