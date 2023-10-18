@@ -25,8 +25,10 @@ RasterizeGaussiansCUDA(
 	const torch::Tensor& rotations,
 	const float scale_modifier,
 	const torch::Tensor& cov3D_precomp,
-	const torch::Tensor& viewmatrix,
-	const torch::Tensor& projmatrix,
+	// const torch::Tensor& viewmatrix,
+	// const torch::Tensor& projmatrix,
+  const torch:: Tensor& camquad,
+  const torch:: Tensor& intrinsicematrix,
 	const float tan_fovx, 
 	const float tan_fovy,
     const int image_height,
@@ -39,7 +41,7 @@ RasterizeGaussiansCUDA(
 
 // std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 // Add camera tensors
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
  	const torch::Tensor& background,
 	const torch::Tensor& means3D,
@@ -49,8 +51,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const torch::Tensor& rotations,
 	const float scale_modifier,
 	const torch::Tensor& cov3D_precomp,
-	const torch::Tensor& viewmatrix,
-    const torch::Tensor& projmatrix,
+	// const torch::Tensor& viewmatrix,
+ //    const torch::Tensor& projmatrix,
+	const torch::Tensor& camquad,
+	const torch::Tensor& intrinsicmatrix,
 	const float tan_fovx, 
 	const float tan_fovy,
     const torch::Tensor& dL_dout_color,

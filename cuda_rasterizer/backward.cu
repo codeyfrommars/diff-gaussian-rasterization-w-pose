@@ -156,7 +156,8 @@ __global__ void computeCov2DCUDA(int P,
 	const float* dL_dconics,
 	float3* dL_dmeans,
 	float* dL_dcov,
-  float* dL_dviewmat)
+  float* dL_dcamquad,
+  float3* dL_dcampos)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P || !(radii[idx] > 0))
@@ -281,42 +282,15 @@ __global__ void computeCov2DCUDA(int P,
 	dL_dmeans[idx] = dL_dmean;
   
   // Gradients w.r.t. camera translation
-  float3 dL_dcamt = {dL_dtx, dL_dty, dL_dtz};
+  atomicAdd(&dL_dcampos->x, dL_dtx);
+  atomicAdd(&dL_dcampos->y, dL_dty);
+  atomicAdd(&dL_dcampos->z, dL_dtz);
 
-  // Gradients w.r.t. camera rotation matrix
-  // TODO: check this
-  // T = W * J
-  // dTdR = J + W * dJdR
-  glm::mat3 dL_dR;
-
-  dL_dR[0][0] += dL_dtx * mean.x;
-  dL_dR[0][1] += dL_dtx * mean.y;
-  dL_dR[0][2] += dL_dtx * mean.z;
-  dL_dR[1][0] += dL_dty * mean.x;
-  dL_dR[1][1] += dL_dty * mean.y;
-  dL_dR[1][2] += dL_dty * mean.z;
-  dL_dR[2][0] += dL_dtz * mean.x;
-  dL_dR[2][1] += dL_dtz * mean.y;
-  dL_dR[2][2] += dL_dtz * mean.z;
-
-  dL_dR = J + W * dL_dR;
-
-  // Gradients w.r.t. viewmatrix. Note that torch::Tensor is row-major
-  // TODO: check this
-  // Add Rotation elements
-  atomicAdd(&dL_dviewmat[0], dL_dR[0][0]);
-  atomicAdd(&dL_dviewmat[4], dL_dR[0][1]);
-  atomicAdd(&dL_dviewmat[8], dL_dR[0][2]);
-  atomicAdd(&dL_dviewmat[1], dL_dR[1][0]);
-  atomicAdd(&dL_dviewmat[5], dL_dR[1][1]);
-  atomicAdd(&dL_dviewmat[9], dL_dR[1][2]);
-  atomicAdd(&dL_dviewmat[2], dL_dR[2][0]);
-  atomicAdd(&dL_dviewmat[6], dL_dR[2][1]);
-  atomicAdd(&dL_dviewmat[10], dL_dR[2][2]);
-  // Add translation elements
-  atomicAdd(&dL_dviewmat[12], dL_dcamt.x);
-  atomicAdd(&dL_dviewmat[13], dL_dcamt.y);
-  atomicAdd(&dL_dviewmat[14], dL_dcamt.z);
+  // TODO: Gradients w.r.t. camera rotation matrix
+  atomicAdd(&dL_dcamquad[0], ); // r
+  atomicAdd(&dL_dcamquad[1], ); // i
+  atomicAdd(&dL_dcamquad[2], ); // j
+  atomicAdd(&dL_dcamquad[3], ); // k
 }
 
 // Backward pass for the conversion of scale and rotation to a 
@@ -412,7 +386,7 @@ __global__ void preprocessCUDA(
 	float* dL_dsh,
 	glm::vec3* dL_dscale,
 	glm::vec4* dL_drot,
-  float* dL_dprojmat,
+  float* dL_dcamquad,
   float3* dL_dcampos)
 {
 	auto idx = cg::this_grid().thread_rank();
@@ -434,19 +408,7 @@ __global__ void preprocessCUDA(
 	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2D[idx].x + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2D[idx].y;
 	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2D[idx].x + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2D[idx].y;
 
-  // Compute loss w.r.t. projection matrix
-  atomicAdd(&dL_dprojmat[0], (m.x * m_w) * dL_dmean2D[idx].x); // P00
-  atomicAdd(&dL_dprojmat[4], (m.y * m_w) * dL_dmean2D[idx].x); // P01
-  atomicAdd(&dL_dprojmat[8], (m.z * m_w) * dL_dmean2D[idx].x); // P02
-  atomicAdd(&dL_dprojmat[12], m_w * dL_dmean2D[idx].x);// P03
-  atomicAdd(&dL_dprojmat[1], (m.x * m_w) * dL_dmean2D[idx].y); // P10
-  atomicAdd(&dL_dprojmat[5], (m.y * m_w) * dL_dmean2D[idx].y); // P11
-  atomicAdd(&dL_dprojmat[9], (m.z * m_w) * dL_dmean2D[idx].y); // P12
-  atomicAdd(&dL_dprojmat[13], m_w * dL_dmean2D[idx].x);// P13
-  atomicAdd(&dL_dprojmat[3], (-m.x * mul1) * dL_dmean2D[idx].x + (-m.x * mul2) * dL_dmean2D[idx].y); // P30
-  atomicAdd(&dL_dprojmat[7], (-m.y * mul1) * dL_dmean2D[idx].x + (-m.y * mul2) * dL_dmean2D[idx].y); // P31
-  atomicAdd(&dL_dprojmat[11], (-m.z * mul1) * dL_dmean2D[idx].x + (-m.z * mul2) * dL_dmean2D[idx].y);// P32
-  atomicAdd(&dL_dprojmat[15], (-mul1) * dL_dmean2D[idx].x + (-mul2) * dL_dmean2D[idx].y);// P33
+  // TODO: Compute loss w.r.t. camera rotation + translation from the projection matrix
 
 	// That's the second part of the mean gradient. Previous computation
 	// of cov2D and following SH conversion also affects it.
@@ -645,8 +607,9 @@ void BACKWARD::preprocess(
 	float* dL_dsh,
 	glm::vec3* dL_dscale,
 	glm::vec4* dL_drot,
-	float* dL_dviewmat,
-	float* dL_dprojmat,
+	// float* dL_dviewmat,
+	// float* dL_dprojmat,
+  float* dL_dcamquad,
 	float3* dL_dcampos)
 {
 	// Propagate gradients for the path of 2D conic matrix computation. 
@@ -666,7 +629,8 @@ void BACKWARD::preprocess(
 		dL_dconic,
 		(float3*)dL_dmean3D,
 		dL_dcov3D,
-		dL_dviewmat);
+    dL_dcamquad,
+    dL_dcampos);
 
 	// Propagate gradients for remaining steps: finish 3D mean gradients,
 	// propagate color gradients to SH (if desireD), propagate 3D covariance
@@ -689,7 +653,7 @@ void BACKWARD::preprocess(
 		dL_dsh,
 		dL_dscale,
 		dL_drot,
-		dL_dprojmat,
+    dL_dcamquad,
 		dL_dcampos);
 }
 

@@ -27,8 +27,7 @@ def rasterize_gaussians(
     scales,
     rotations,
     cov3Ds_precomp,
-    viewmatrix,
-    projmatrix,
+    camquad,
     campos,
     raster_settings,
 ):
@@ -41,8 +40,7 @@ def rasterize_gaussians(
         scales,
         rotations,
         cov3Ds_precomp,
-        viewmatrix,
-        projmatrix,
+        camquad,
         campos,
         raster_settings,
     )
@@ -59,8 +57,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         scales,
         rotations,
         cov3Ds_precomp,
-        viewmatrix,
-        projmatrix,
+        camquad,
         campos,
         raster_settings,
     ):
@@ -76,8 +73,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             cov3Ds_precomp,
             # raster_settings.viewmatrix,
             # raster_settings.projmatrix,
-            viewmatrix,
-            projmatrix,
+            camquad,
+            raster_settings.intrinsicmatrix,
             raster_settings.tanfovx,
             raster_settings.tanfovy,
             raster_settings.image_height,
@@ -108,7 +105,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         # ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
         # Adding camera tensors
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer,
-                              viewmatrix, projmatrix, campos)
+                              camquad, campos)
         return color, radii
 
     @staticmethod
@@ -119,7 +116,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings = ctx.raster_settings
         # colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
         # Adding camera tensors
-        colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer, viewmatrix, projmatrix, campos = ctx.saved_tensors
+        colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer, camquad, campos = ctx.saved_tensors
 
         # Restructure args as C++ method expects them
         args = (raster_settings.bg,
@@ -132,8 +129,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                 cov3Ds_precomp, 
                 # raster_settings.viewmatrix, 
                 # raster_settings.projmatrix, 
-                viewmatrix,
-                projmatrix,
+                camquad,
+                raster_settings.intrinsicmatrix,
                 raster_settings.tanfovx, 
                 raster_settings.tanfovy, 
                 grad_out_color, 
@@ -153,7 +150,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             try:
                 # grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
                 # Adding camera tensors
-                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix, grad_campos = _C.rasterize_gaussians_backward(*args)
+                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_camquad, grad_campos = _C.rasterize_gaussians_backward(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_bw.dump")
                 print("\nAn error occured in backward. Writing snapshot_bw.dump for debugging.\n")
@@ -161,13 +158,11 @@ class _RasterizeGaussians(torch.autograd.Function):
         else:
              # grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
             # Adding camera tensors
-            grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix, grad_campos = _C.rasterize_gaussians_backward(*args)
+            grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_camquad, grad_campos = _C.rasterize_gaussians_backward(*args)
 
         torch.set_printoptions(precision=10)
-        print("view")
-        print(grad_viewmatrix)
-        print("proj")
-        print(grad_projmatrix)
+        print("quad")
+        print(grad_camquad)
         print("campos")
         print(grad_campos)
         print("campos")
@@ -182,8 +177,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_rotations,
             grad_cov3Ds_precomp,
             # Add camera pose to grads
-            grad_viewmatrix,
-            grad_projmatrix,
+            grad_camquad,
             grad_campos,
             None,
         )
@@ -197,10 +191,11 @@ class GaussianRasterizationSettings(NamedTuple):
     tanfovy : float
     bg : torch.Tensor
     scale_modifier : float
-    viewmatrix : torch.Tensor
-    projmatrix : torch.Tensor
+    # viewmatrix : torch.Tensor
+    # projmatrix : torch.Tensor
+    intrinsicmatrix : torch.Tensor
     sh_degree : int
-    campos : torch.Tensor
+    # campos : torch.Tensor
     prefiltered : bool
     debug : bool
 
@@ -209,6 +204,7 @@ class GaussianRasterizer(nn.Module):
         super().__init__()
         self.raster_settings = raster_settings
 
+    # AFAIK this function isn't used
     def markVisible(self, positions):
         # Mark visible points (based on frustum culling for camera) with a boolean 
         with torch.no_grad():
@@ -221,7 +217,7 @@ class GaussianRasterizer(nn.Module):
         return visible
 
     def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None,
-                viewmatrix = None, projmatrix = None, campos = None):
+                camquad = None, campos = None):
         
         raster_settings = self.raster_settings
 
@@ -254,8 +250,7 @@ class GaussianRasterizer(nn.Module):
             scales,
             rotations,
             cov3D_precomp,
-            viewmatrix,
-            projmatrix,
+            camquad,
             campos,
             raster_settings,
         )

@@ -42,8 +42,10 @@ RasterizeGaussiansCUDA(
 	const torch::Tensor& rotations,
 	const float scale_modifier,
 	const torch::Tensor& cov3D_precomp,
-	const torch::Tensor& viewmatrix,
-	const torch::Tensor& projmatrix,
+	// const torch::Tensor& viewmatrix,
+	// const torch::Tensor& projmatrix,
+  const torch::Tensor& camquad,
+  const torch::Tensor& intrinsicmatrix,
 	const float tan_fovx, 
 	const float tan_fovy,
     const int image_height,
@@ -101,8 +103,10 @@ RasterizeGaussiansCUDA(
 		scale_modifier,
 		rotations.contiguous().data_ptr<float>(),
 		cov3D_precomp.contiguous().data<float>(), 
-		viewmatrix.contiguous().data<float>(), 
-		projmatrix.contiguous().data<float>(),
+		// viewmatrix.contiguous().data<float>(), 
+		// projmatrix.contiguous().data<float>(),
+		camquad.contiguous().data<float>(), 
+		intrinsicmatrix.contiguous().data<float>(),
 		campos.contiguous().data<float>(),
 		tan_fovx,
 		tan_fovy,
@@ -115,7 +119,7 @@ RasterizeGaussiansCUDA(
 }
 
 // Add camera tensors
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
  	const torch::Tensor& background,
 	const torch::Tensor& means3D,
@@ -125,8 +129,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const torch::Tensor& rotations,
 	const float scale_modifier,
 	const torch::Tensor& cov3D_precomp,
-	const torch::Tensor& viewmatrix,
-  const torch::Tensor& projmatrix,
+	// const torch::Tensor& viewmatrix,
+ //  const torch::Tensor& projmatrix,
+	const torch::Tensor& camquad,
+  const torch::Tensor& intrinsicmatrix,
 	const float tan_fovx,
 	const float tan_fovy,
   const torch::Tensor& dL_dout_color,
@@ -159,8 +165,9 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   torch::Tensor dL_dscales = torch::zeros({P, 3}, means3D.options());
   torch::Tensor dL_drotations = torch::zeros({P, 4}, means3D.options());
   // Add camera tensors
-  torch::Tensor dL_dviewmat = torch::zeros({4, 4}, means3D.options());
-  torch::Tensor dL_dprojmat = torch::zeros({4, 4}, means3D.options());
+  // torch::Tensor dL_dviewmat = torch::zeros({4, 4}, means3D.options());
+  // torch::Tensor dL_dprojmat = torch::zeros({4, 4}, means3D.options());
+  torch::Tensor dL_dcamquad = torch::zeros({4}, means3D.options());
   torch::Tensor dL_dcampos = torch::zeros({3}, means3D.options());
   
   if(P != 0)
@@ -175,8 +182,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	  scale_modifier,
 	  rotations.data_ptr<float>(),
 	  cov3D_precomp.contiguous().data<float>(),
-	  viewmatrix.contiguous().data<float>(),
-	  projmatrix.contiguous().data<float>(),
+	  // viewmatrix.contiguous().data<float>(),
+	  // projmatrix.contiguous().data<float>(),
+	  camquad.contiguous().data<float>(),
+	  intrinsicmatrix.contiguous().data<float>(),
 	  campos.contiguous().data<float>(),
 	  tan_fovx,
 	  tan_fovy,
@@ -194,13 +203,14 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	  dL_dsh.contiguous().data<float>(),
 	  dL_dscales.contiguous().data<float>(),
 	  dL_drotations.contiguous().data<float>(),
-	  dL_dviewmat.contiguous().data<float>(),
-	  dL_dprojmat.contiguous().data<float>(),
+	  // dL_dviewmat.contiguous().data<float>(),
+	  // dL_dprojmat.contiguous().data<float>(),
+	  dL_dcamquad.contiguous().data<float>(),
 	  dL_dcampos.contiguous().data<float>(),
 	  debug);
   }
 
-  return std::make_tuple(dL_dmeans2D, dL_dcolors, dL_dopacity, dL_dmeans3D, dL_dcov3D, dL_dsh, dL_dscales, dL_drotations, dL_dviewmat, dL_dprojmat, dL_dcampos);
+  return std::make_tuple(dL_dmeans2D, dL_dcolors, dL_dopacity, dL_dmeans3D, dL_dcov3D, dL_dsh, dL_dscales, dL_drotations, dL_dcamquad, dL_dcampos);
 }
 
 torch::Tensor markVisible(

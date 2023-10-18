@@ -21,6 +21,7 @@
 #include <cub/device/device_radix_sort.cuh>
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
@@ -210,8 +211,10 @@ int CudaRasterizer::Rasterizer::forward(
 	const float scale_modifier,
 	const float* rotations,
 	const float* cov3D_precomp,
-	const float* viewmatrix,
-	const float* projmatrix,
+	// const float* viewmatrix,
+	// const float* projmatrix,
+	const float* cam_quad,
+	const float* intmat,
 	const float* cam_pos,
 	const float tan_fovx, float tan_fovy,
 	const bool prefiltered,
@@ -244,6 +247,29 @@ int CudaRasterizer::Rasterizer::forward(
 		throw std::runtime_error("For non-RGB, provide precomputed Gaussian colors!");
 	}
 
+  // Convert camera quaternion + intrinsicmatrix into viewmatrix and projmatrix
+	glm::vec4 q = *(glm::vec4*)cam_quad;// / glm::length(rot);
+	float r = q.x;
+	float x = q.y;
+	float y = q.z;
+	float z = q.w;
+	glm::mat4 viewmatrixmat = glm::mat4(
+		1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y), cam_pos[0],
+		2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x), cam_pos[1],
+		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y), cam_pos[2],
+    0, 0, 0, 1
+	);
+  glm::mat4 intrinsicmatrix = glm::mat4(
+    intmat[0], intmat[4], intmat[8], intmat[12],
+    intmat[1], intmat[5], intmat[9], intmat[13],
+    intmat[2], intmat[6], intmat[10], intmat[14],
+    intmat[3], intmat[7], intmat[11], intmat[15]
+  );
+  glm::mat4 projmatrixmat = viewmatrixmat * intrinsicmatrix;
+  // Convert glm::mat4 back to array
+  float* viewmatrix = glm::value_ptr(viewmatrixmat);
+  float* projmatrix = glm::value_ptr(projmatrixmat);
+
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
 	CHECK_CUDA(FORWARD::preprocess(
 		P, D, M,
@@ -257,6 +283,8 @@ int CudaRasterizer::Rasterizer::forward(
 		cov3D_precomp,
 		colors_precomp,
 		viewmatrix, projmatrix,
+    // (glm::vec4*)cam_quad,
+    // intrinsicmatrix,
 		(glm::vec3*)cam_pos,
 		width, height,
 		focal_x, focal_y,
@@ -348,8 +376,10 @@ void CudaRasterizer::Rasterizer::backward(
 	const float scale_modifier,
 	const float* rotations,
 	const float* cov3D_precomp,
-	const float* viewmatrix,
-	const float* projmatrix,
+	// const float* viewmatrix,
+	// const float* projmatrix,
+	const float* camquad,
+	const float* intmat,
 	const float* campos,
 	const float tan_fovx, float tan_fovy,
 	const int* radii,
@@ -367,8 +397,9 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_dscale,
 	float* dL_drot,
   // Add camera gradients
-	float* dL_dviewmat,
-	float* dL_dprojmat,
+	// float* dL_dviewmat,
+	// float* dL_dprojmat,
+  float* dL_dcamquad,
 	float* dL_dcampos,
 	bool debug)
 {
@@ -413,6 +444,30 @@ void CudaRasterizer::Rasterizer::backward(
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
 	// use the one we computed ourselves.
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
+
+  // Convert camera quaternion + intrinsicmatrix into viewmatrix and projmatrix
+	glm::vec4 q = *(glm::vec4*)camquad;// / glm::length(rot);
+	float r = q.x;
+	float x = q.y;
+	float y = q.z;
+	float z = q.w;
+	glm::mat4 viewmatrixmat = glm::mat4(
+		1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y), campos[0],
+		2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x), campos[1],
+		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y), campos[2],
+    0, 0, 0, 1
+	);
+  glm::mat4 intrinsicmatrix = glm::mat4(
+    intmat[0], intmat[4], intmat[8], intmat[12],
+    intmat[1], intmat[5], intmat[9], intmat[13],
+    intmat[2], intmat[6], intmat[10], intmat[14],
+    intmat[3], intmat[7], intmat[11], intmat[15]
+  );
+  glm::mat4 projmatrixmat = viewmatrixmat * intrinsicmatrix;
+  // Convert glm::mat4 back to array
+  float* viewmatrix = glm::value_ptr(viewmatrixmat);
+  float* projmatrix = glm::value_ptr(projmatrixmat);
+
 	CHECK_CUDA(BACKWARD::preprocess(P, D, M,
 		(float3*)means3D,
 		radii,
@@ -424,6 +479,8 @@ void CudaRasterizer::Rasterizer::backward(
 		cov3D_ptr,
 		viewmatrix,
 		projmatrix,
+    // (glm::vec4*)camquad,
+    // intrinsicmatrix,
 		focal_x, focal_y,
 		tan_fovx, tan_fovy,
 		(glm::vec3*)campos,
@@ -436,7 +493,8 @@ void CudaRasterizer::Rasterizer::backward(
 		(glm::vec3*)dL_dscale,
 		(glm::vec4*)dL_drot,
     // TODO: check if I need to cast these
-    dL_dviewmat,
-    dL_dprojmat,
+    // dL_dviewmat,
+    // dL_dprojmat,
+    (glm::vec4*)dL_dcamquad,
     (float3*)dL_dcampos), debug)
 }
