@@ -286,23 +286,53 @@ __global__ void computeCov2DCUDA(int P,
   // Gradients w.r.t. camera rotation matrix
   // TODO: check this
   // T = W * J
-  // dTdR = J + W * dJdR
+  // dTdR = dWdR * J + W * dJdR
   glm::mat3 dL_dR;
 
-  dL_dR[0][0] += dL_dtx * mean.x;
-  dL_dR[0][1] += dL_dtx * mean.y;
-  dL_dR[0][2] += dL_dtx * mean.z;
-  dL_dR[1][0] += dL_dty * mean.x;
-  dL_dR[1][1] += dL_dty * mean.y;
-  dL_dR[1][2] += dL_dty * mean.z;
-  dL_dR[2][0] += dL_dtz * mean.x;
-  dL_dR[2][1] += dL_dtz * mean.y;
-  dL_dR[2][2] += dL_dtz * mean.z;
+  float mul1 = -h_x * tz2;
+  float mul2 = -h_y * tz2;
+  float mul3 = (2 * h_x * t.x) * tz3;
+  float mul4 = (2 * h_y * t.y) * tz3;
+  dL_dR[0][0] = (J[0][0] + W[2][0] * mul1 * mean.x) * dL_dT00 +
+                (W[2][1] * mul1 * mean.x) * dL_dT01 + 
+                (W[2][2] * mul1 * mean.x) * dL_dT02;
+  dL_dR[0][1] = (W[2][0] * mul1 * mean.y) * dL_dT00 +
+                (J[0][0] + W[2][1] * mul1 * mean.y) * dL_dT01 + 
+                (W[2][2] * mul1 * mean.y) * dL_dT02;
+  dL_dR[0][2] = (W[2][0] * mul1 * mean.z) * dL_dT00 +
+                (W[2][1] * mul1 * mean.z) * dL_dT01 + 
+                (J[0][0] + W[2][2] * mul1 * mean.z) * dL_dT02;
 
-  dL_dR = J + W * dL_dR;
+  dL_dR[1][0] = (J[1][1] + W[2][0] * mul2 * mean.x) * dL_dT10 +
+                (W[2][1] * mul2 * mean.x) * dL_dT11 + 
+                (W[2][2] * mul2 * mean.x) * dL_dT12;
+  dL_dR[1][1] = (W[2][0] * mul2 * mean.y) * dL_dT10 +
+                (J[1][1] + W[2][1] * mul2 * mean.y) * dL_dT11 + 
+                (W[2][2] * mul2 * mean.y) * dL_dT12;
+  dL_dR[1][2] = (W[2][0] * mul2 * mean.z) * dL_dT10 +
+                (W[2][1] * mul2 * mean.z) * dL_dT11 + 
+                (J[1][1] + W[2][2] * mul2 * mean.z) * dL_dT12;
+
+  dL_dR[2][0] = (J[0][2] + (W[0][0] * mul1 + W[2][0] * mul3) * mean.x) * dL_dT00 + 
+                ((W[0][1] * mul1 + W[2][1] * mul3) * mean.x) * dL_dT01 +
+                ((W[0][2] * mul1 + W[2][2] * mul3) * mean.x) * dL_dT02 +
+                (J[1][2] + (W[1][0] * mul2 + W[2][0] * mul4) * mean.x) * dL_dT10 +
+                ((W[1][1] * mul2 + W[2][1] * mul4) * mean.x) * dL_dT11 +
+                ((W[1][2] * mul2 + W[2][2] * mul4) * mean.x) * dL_dT12;
+  dL_dR[2][1] = ((W[0][0] * mul1 + W[2][0] * mul3) * mean.y) * dL_dT00 + 
+                (J[0][2] + (W[0][1] * mul1 + W[2][1] * mul3) * mean.y) * dL_dT01 +
+                ((W[0][2] * mul1 + W[2][2] * mul3) * mean.y) * dL_dT02 +
+                ((W[1][0] * mul2 + W[2][0] * mul4) * mean.y) * dL_dT10 +
+                (J[1][2] + (W[1][1] * mul2 + W[2][1] * mul4) * mean.y) * dL_dT11 +
+                ((W[1][2] * mul2 + W[2][2] * mul4) * mean.y) * dL_dT12;
+  dL_dR[2][2] = ((W[0][0] * mul1 + W[2][0] * mul3) * mean.z) * dL_dT00 + 
+                ((W[0][1] * mul1 + W[2][1] * mul3) * mean.z) * dL_dT01 +
+                (J[0][2] + (W[0][2] * mul1 + W[2][2] * mul3) * mean.z) * dL_dT02 +
+                ((W[1][0] * mul2 + W[2][0] * mul4) * mean.z) * dL_dT10 +
+                ((W[1][1] * mul2 + W[2][1] * mul4) * mean.z) * dL_dT11 +
+                (J[1][2] + (W[1][2] * mul2 + W[2][2] * mul4) * mean.z) * dL_dT12;
 
   // Gradients w.r.t. viewmatrix. Note that torch::Tensor is row-major
-  // TODO: check this
   // Add Rotation elements
   atomicAdd(&dL_dviewmat[0], dL_dR[0][0]);
   atomicAdd(&dL_dviewmat[4], dL_dR[0][1]);
