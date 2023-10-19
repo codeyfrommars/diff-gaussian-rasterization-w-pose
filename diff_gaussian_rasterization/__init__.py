@@ -163,15 +163,16 @@ class _RasterizeGaussians(torch.autograd.Function):
             # Adding camera tensors
             grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_viewmatrix, grad_projmatrix, grad_campos = _C.rasterize_gaussians_backward(*args)
 
-        torch.set_printoptions(precision=10)
-        print("view")
-        print(grad_viewmatrix)
-        print("proj")
-        print(grad_projmatrix)
-        print("campos")
-        print(grad_campos)
-        print("campos")
-        print(grad_campos)
+        # torch.set_printoptions(precision=10)
+        # print("view")
+        # print(grad_viewmatrix)
+        # print("proj")
+        # print(grad_projmatrix)
+        # print("campos")
+        # print(grad_campos)
+        # print("campos")
+        # print(grad_campos)
+
         grads = (
             grad_means3D,
             grad_means2D,
@@ -244,7 +245,7 @@ class GaussianRasterizer(nn.Module):
             cov3D_precomp = torch.Tensor([])
 
         # Invoke C++/CUDA rasterization routine
-        # TODO: Add camera tensors
+        # Add camera tensors
         return rasterize_gaussians(
             means3D,
             means2D,

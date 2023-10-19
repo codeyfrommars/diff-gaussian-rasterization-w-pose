@@ -435,7 +435,6 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dsh,
 		(glm::vec3*)dL_dscale,
 		(glm::vec4*)dL_drot,
-    // TODO: check if I need to cast these
     dL_dviewmat,
     dL_dprojmat,
     (float3*)dL_dcampos), debug)
