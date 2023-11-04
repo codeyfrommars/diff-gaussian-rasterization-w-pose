@@ -138,9 +138,9 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	dL_dmeans[idx] += glm::vec3(dL_dmean.x, dL_dmean.y, dL_dmean.z);
 
   // Gradients of loss w.r.t. camera position
-  atomicAdd(&dL_dcampos->x, -dL_dmean.x);
-  atomicAdd(&dL_dcampos->y, -dL_dmean.y);
-  atomicAdd(&dL_dcampos->z, -dL_dmean.z);
+  atomicAdd(&dL_dcampos[0].x, -dL_dmean.x);
+  atomicAdd(&dL_dcampos[0].y, -dL_dmean.y);
+  atomicAdd(&dL_dcampos[0].z, -dL_dmean.z);
 }
 
 // Backward version of INVERSE 2D covariance matrix computation
@@ -280,8 +280,7 @@ __global__ void computeCov2DCUDA(int P,
 	// Additional mean gradient is accumulated in BACKWARD::preprocess.
 	dL_dmeans[idx] = dL_dmean;
   
-  // Gradients w.r.t. camera translation
-  float3 dL_dcamt = {dL_dtx, dL_dty, dL_dtz};
+  // Gradients w.r.t. camera translation is just dL_dt
 
   // Gradients w.r.t. camera rotation matrix
   // TODO: check this
@@ -344,9 +343,10 @@ __global__ void computeCov2DCUDA(int P,
   atomicAdd(&dL_dviewmat[6], dL_dR[2][1]);
   atomicAdd(&dL_dviewmat[10], dL_dR[2][2]);
   // Add translation elements
-  atomicAdd(&dL_dviewmat[12], dL_dcamt.x);
-  atomicAdd(&dL_dviewmat[13], dL_dcamt.y);
-  atomicAdd(&dL_dviewmat[14], dL_dcamt.z);
+  atomicAdd(&dL_dviewmat[12], dL_dtx);
+  atomicAdd(&dL_dviewmat[13], dL_dty);
+  atomicAdd(&dL_dviewmat[14], dL_dtz);
+
 }
 
 // Backward pass for the conversion of scale and rotation to a 
@@ -472,7 +472,7 @@ __global__ void preprocessCUDA(
   atomicAdd(&dL_dprojmat[1], (m.x * m_w) * dL_dmean2D[idx].y); // P10
   atomicAdd(&dL_dprojmat[5], (m.y * m_w) * dL_dmean2D[idx].y); // P11
   atomicAdd(&dL_dprojmat[9], (m.z * m_w) * dL_dmean2D[idx].y); // P12
-  atomicAdd(&dL_dprojmat[13], m_w * dL_dmean2D[idx].x);// P13
+  atomicAdd(&dL_dprojmat[13], m_w * dL_dmean2D[idx].y);// P13
   atomicAdd(&dL_dprojmat[3], (-m.x * mul1) * dL_dmean2D[idx].x + (-m.x * mul2) * dL_dmean2D[idx].y); // P30
   atomicAdd(&dL_dprojmat[7], (-m.y * mul1) * dL_dmean2D[idx].x + (-m.y * mul2) * dL_dmean2D[idx].y); // P31
   atomicAdd(&dL_dprojmat[11], (-m.z * mul1) * dL_dmean2D[idx].x + (-m.z * mul2) * dL_dmean2D[idx].y);// P32
